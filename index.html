@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Buenavista — Atlas de uso de suelo</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,900&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+
+<style>
+:root{
+  --ink:        #161F1B;
+  --ink-panel:  #1D2820;
+  --ink-raised: #253327;
+  --parchment:  #EFE9DA;
+  --parchment-dim: #C9C4B3;
+  --gold:       #C9A24B;
+  --sage:       #8FA38F;
+  --line:       rgba(239,233,218,0.14);
+  --line-strong:rgba(239,233,218,0.28);
+
+  --c-lindero:   rgba(0,0,0,1);
+  --c-educacion: rgba(243,166,178,1);
+  --c-salud:     rgba(232,113,141,1);
+  --c-verdes:    rgba(183,72,75,1);
+  --c-vacante:   rgba(152,125,183,1);
+  --c-comercial: rgba(225,89,137,1);
+  --c-vial:      rgba(114,155,111,1);
+  --c-centroide: rgba(213,180,60,1);
+  --c-residencia:rgba(133,182,111,1);
+}
+
+*{box-sizing:border-box;}
+html,body{margin:0;height:100%;background:var(--ink);font-family:'IBM Plex Sans',sans-serif;color:var(--parchment);}
+.mono{font-family:'IBM Plex Mono',monospace;}
+
+#app{display:flex;height:100vh;width:100vw;overflow:hidden;}
+
+/* ---------- SIDEBAR ---------- */
+#sidebar{
+  width:308px;flex:0 0 308px;background:var(--ink-panel);
+  border-right:1px solid var(--line-strong);
+  display:flex;flex-direction:column;
+  height:100%;
+}
+.sb-scroll{overflow-y:auto;flex:1;}
+.sb-scroll::-webkit-scrollbar{width:6px;}
+.sb-scroll::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:3px;}
+
+.sb-header{padding:28px 24px 20px;border-bottom:1px solid var(--line);}
+.eyebrow{
+  font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.16em;
+  color:var(--gold);text-transform:uppercase;display:flex;align-items:center;gap:8px;
+}
+.eyebrow::before{content:"";width:16px;height:1px;background:var(--gold);display:inline-block;}
+h1{
+  font-family:'Fraunces',serif;font-weight:900;font-size:36px;line-height:1;
+  margin:10px 0 6px;color:var(--parchment);letter-spacing:-.01em;
+}
+.subtitle{font-size:13px;color:var(--parchment-dim);line-height:1.5;max-width:26ch;}
+
+.sb-section{padding:20px 24px;border-bottom:1px solid var(--line);}
+.sb-section h2{
+  font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--sage);margin:0 0 14px;
+}
+
+.layer-row{
+  display:flex;align-items:center;gap:10px;padding:8px 0;cursor:pointer;
+  border-bottom:1px dashed transparent;
+}
+.layer-row:hover{border-bottom-color:var(--line-strong);}
+.swatch{
+  width:14px;height:14px;flex:0 0 14px;border-radius:3px;
+  border:1px solid rgba(0,0,0,.35);box-shadow:inset 0 0 0 1px rgba(255,255,255,.06);
+}
+.swatch.line{border-radius:0;height:3px;align-self:center;border:none;}
+.swatch.point{border-radius:50%;}
+.layer-label{flex:1;font-size:13.5px;color:var(--parchment);}
+.layer-count{font-size:11px;color:var(--sage);}
+.chk{
+  width:16px;height:16px;flex:0 0 16px;border:1.5px solid var(--line-strong);
+  border-radius:3px;display:flex;align-items:center;justify-content:center;
+  transition:background .15s,border-color .15s;
+}
+.chk svg{width:10px;height:10px;opacity:0;transition:opacity .15s;}
+.layer-row[data-on="1"] .chk{background:var(--gold);border-color:var(--gold);}
+.layer-row[data-on="1"] .chk svg{opacity:1;}
+
+.legend-item{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--parchment-dim);padding:4px 0;}
+
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.stat{border:1px solid var(--line);padding:10px 12px;border-radius:6px;background:var(--ink-raised);}
+.stat b{display:block;font-family:'Fraunces',serif;font-size:22px;font-weight:600;color:var(--gold);}
+.stat span{font-size:10.5px;color:var(--sage);letter-spacing:.04em;text-transform:uppercase;}
+
+.sb-footer{
+  padding:16px 24px;font-size:10.5px;color:var(--sage);border-top:1px solid var(--line);
+  display:flex;justify-content:space-between;align-items:center;
+}
+
+/* ---------- MAP ---------- */
+#map-wrap{position:relative;flex:1;height:100%;}
+#map{position:absolute;inset:0;background:#0e1512;}
+
+.leaflet-popup-content-wrapper{
+  background:var(--ink-panel);color:var(--parchment);border-radius:8px;
+  border:1px solid var(--line-strong);box-shadow:0 12px 28px rgba(0,0,0,.45);
+}
+.leaflet-popup-tip{background:var(--ink-panel);}
+.leaflet-popup-content{margin:14px 16px;font-family:'IBM Plex Sans',sans-serif;font-size:13px;}
+.pop-kind{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--gold);margin-bottom:6px;display:block;}
+.pop-title{font-family:'Fraunces',serif;font-weight:600;font-size:16px;margin:0 0 8px;color:var(--parchment);}
+.pop-row{display:flex;justify-content:space-between;gap:16px;padding:3px 0;border-top:1px solid var(--line);font-size:12px;}
+.pop-row:first-of-type{border-top:none;}
+.pop-row span:first-child{color:var(--sage);}
+.pop-row span:last-child{font-family:'IBM Plex Mono',monospace;color:var(--parchment);}
+.leaflet-container a.leaflet-popup-close-button{color:var(--sage);}
+
+.leaflet-control-zoom a{
+  background:var(--ink-panel)!important;color:var(--parchment)!important;
+  border-color:var(--line-strong)!important;
+}
+.leaflet-control-scale-line{
+  background:rgba(23,32,26,.85)!important;color:var(--parchment-dim)!important;
+  border-color:var(--line-strong)!important;font-family:'IBM Plex Mono',monospace;
+}
+
+/* ---------- HUD ---------- */
+#hud{
+  position:absolute;left:16px;right:16px;bottom:16px;z-index:1000;
+  display:flex;align-items:flex-end;justify-content:space-between;
+  pointer-events:none;
+}
+#coords{
+  background:rgba(23,32,26,.88);border:1px solid var(--line-strong);
+  border-radius:8px;padding:8px 14px;font-family:'IBM Plex Mono',monospace;
+  font-size:11.5px;color:var(--parchment-dim);display:flex;gap:16px;
+  backdrop-filter:blur(3px);
+}
+#coords b{color:var(--gold);font-weight:500;}
+#stamp{
+  width:96px;height:96px;border:2px solid rgba(201,162,75,.55);border-radius:50%;
+  display:flex;align-items:center;justify-content:center;transform:rotate(-9deg);
+  background:rgba(23,32,26,.55);flex-shrink:0;
+}
+#stamp span{
+  font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.1em;
+  color:rgba(201,162,75,.75);text-align:center;line-height:1.6;text-transform:uppercase;
+}
+
+/* ---------- MOBILE ---------- */
+#drawer-toggle{display:none;}
+@media (max-width:760px){
+  #app{flex-direction:column;}
+  #sidebar{
+    width:100%;flex:0 0 auto;height:auto;max-height:44px;overflow:hidden;
+    transition:max-height .28s ease;order:2;position:relative;z-index:1100;
+  }
+  #sidebar.open{max-height:72vh;overflow-y:auto;}
+  #drawer-toggle{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:12px 20px;cursor:pointer;font-family:'IBM Plex Mono',monospace;
+    font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--gold);
+  }
+  #map-wrap{order:1;flex:1;}
+  .sb-header{padding-top:0;}
+  #stamp{width:72px;height:72px;}
+  #hud{left:10px;right:10px;bottom:10px;}
+  #coords{font-size:10px;gap:10px;padding:7px 10px;}
+}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <aside id="sidebar">
+    <div id="drawer-toggle" onclick="document.getElementById('sidebar').classList.toggle('open')">
+      <span>Capas del sector ▾</span>
+      <span class="mono" style="color:var(--sage)">tocar para abrir</span>
+    </div>
+    <div class="sb-scroll">
+      <div class="sb-header">
+        <div class="eyebrow">Levantamiento urbano</div>
+        <h1>Buenavista</h1>
+        <div class="subtitle">Atlas de uso de suelo del sector — Machala, El Oro, Ecuador.</div>
+      </div>
+
+      <div class="sb-section">
+        <h2>Capas</h2>
+        <div id="layer-list"></div>
+      </div>
+
+      <div class="sb-section">
+        <h2>Registro del sector</h2>
+        <div class="stat-grid" id="stat-grid"></div>
+      </div>
+
+      <div class="sb-section" style="border-bottom:none;">
+        <h2>Leyenda de línea</h2>
+        <div class="legend-item"><span class="swatch line" style="background:var(--c-lindero)"></span> Lindero del sector</div>
+        <div class="legend-item"><span class="swatch line" style="background:var(--c-vial)"></span> Red vial</div>
+        <div class="legend-item"><span class="swatch point" style="background:var(--c-centroide)"></span> Centroide</div>
+      </div>
+    </div>
+
+    <div class="sb-footer">
+      <span>qgis2web · Leaflet</span>
+      <span class="mono">EPSG:4326</span>
+    </div>
+  </aside>
+
+  <div id="map-wrap">
+    <div id="map"></div>
+    <div id="hud">
+      <div id="coords">
+        <span>LAT <b id="hud-lat">—</b></span>
+        <span>LON <b id="hud-lon">—</b></span>
+        <span>ZOOM <b id="hud-zoom">—</b></span>
+      </div>
+      <div id="stamp"><span>Ficha de<br>campo<br>2026</span></div>
+    </div>
+  </div>
+</div>
+
+<script src="data/Lindero_1.js"></script>
+<script src="data/Educacion_2.js"></script>
+<script src="data/Salud_3.js"></script>
+<script src="data/areas_verdes_4.js"></script>
+<script src="data/Suelo_vacante_5.js"></script>
+<script src="data/comercial_6.js"></script>
+<script src="data/RED_VIAL_7.js"></script>
+<script src="data/Centroide_8.js"></script>
+<script src="data/residencia_9.js"></script>
+
+<script>
+const fmt = n => n==null ? '—' : Number(n).toLocaleString('es-EC',{maximumFractionDigits:0});
+const ha  = n => n==null ? '—' : (Number(n)/10000).toLocaleString('es-EC',{maximumFractionDigits:2});
+
+function popupHTML(kind, title, rows){
+  return `<span class="pop-kind">${kind}</span><p class="pop-title">${title}</p>` +
+    rows.map(r=>`<div class="pop-row"><span>${r[0]}</span><span>${r[1]}</span></div>`).join('');
+}
+
+const LAYERS = [
+  {
+    key:'lindero', label:'Lindero del sector', data: json_Lindero_1, type:'line',
+    color:'var(--c-lindero)', style:{color:'#000',weight:4,fillOpacity:0,lineCap:'square',lineJoin:'bevel'},
+    onEach:(f,l)=>l.bindPopup(popupHTML('Perímetro','Lindero del sector',[['ID', f.properties.fid ?? '—']]))
+  },
+  {
+    key:'educacion', label:'Educación', data: json_Educacion_2, type:'fill',
+    color:'var(--c-educacion)', style:{color:'#232323',weight:1,fillOpacity:1,fillColor:'#F3A6B2'},
+    onEach:(f,l)=>l.bindPopup(popupHTML('Equipamiento','Predio educativo',[
+      ['Área', fmt(f.properties.area_m2)+' m²'], ['Hectáreas', ha(f.properties.area_m2)], ['ID', f.properties.id ?? '—']
+    ]))
+  },
+  {
+    key:'salud', label:'Salud', data: json_Salud_3, type:'fill',
+    color:'var(--c-salud)', style:{color:'#232323',weight:1,fillOpacity:1,fillColor:'#E8718D'},
+    onEach:(f,l)=>l.bindPopup(popupHTML('Equipamiento','Predio de salud',[
+      ['Área', fmt(f.properties.area_m2)+' m²'], ['Hectáreas', ha(f.properties.area_m2)], ['ID', f.properties.id ?? '—']
+    ]))
+  },
+  {
+    key:'verdes', label:'Áreas verdes', data: json_areas_verdes_4, type:'fill',
+    color:'var(--c-verdes)', style:{color:'#232323',weight:1,fillOpacity:1,fillColor:'#B7484B'},
+    onEach:(f,l)=>l.bindPopup(popupHTML('Equipamiento','Área verde',[
+      ['Área', fmt(f.properties.area_m2)+' m²'], ['Hectáreas', ha(f.properties.area_m2)], ['ID', f.properties.id ?? '—']
+    ]))
+  },
+  {
+    key:'vacante', label:'Suelo vacante', data: json_Suelo_vacante_5, type:'fill',
+    color:'var(--c-vacante)', style:{color:'#232323',weight:1,fillOpacity:1,fillColor:'#987DB7'},
+    onEach:(f,l)=>l.bindPopup(popupHTML('Uso de suelo','Suelo vacante',[
+      ['Área', fmt(f.properties.area_m2)+' m²'], ['Hectáreas', ha(f.properties.area_m2)]
+    ]))
+  },
+  {
+    key:'comercial', label:'Comercial', data: json_comercial_6, type:'fill',
+    color:'var(--c-comercial)', style:{color:'#232323',weight:1,fillOpacity:1,fillColor:'#E15989'},
+    onEach:(f,l)=>l.bindPopup(popupHTML('Uso de suelo','Predio comercial',[
+      ['Área', fmt(f.properties.area_m2)+' m²'], ['Hectáreas', ha(f.properties.area_m2)], ['ID', f.properties.id ?? '—']
+    ]))
+  },
+  {
+    key:'residencia', label:'Residencial', data: json_residencia_9, type:'fill',
+    color:'var(--c-residencia)', style:{color:'#232323',weight:1,fillOpacity:1,fillColor:'#85B66F'},
+    onEach:(f,l)=>l.bindPopup(popupHTML('Uso de suelo','Predio residencial',[
+      ['Área', fmt(f.properties.area_m2)+' m²'], ['Hectáreas', ha(f.properties.area_m2)]
+    ]))
+  },
+  {
+    key:'vial', label:'Red vial', data: json_RED_VIAL_7, type:'line',
+    color:'var(--c-vial)', style:{color:'#729B6F',weight:2,fillOpacity:0,lineCap:'square',lineJoin:'bevel'},
+    onEach:(f,l)=>l.bindPopup(popupHTML('Vialidad', f.properties.name || 'Vía sin nombre',[
+      ['Tipo', f.properties.highway ?? '—'], ['OSM ID', f.properties.osm_id ?? '—']
+    ]))
+  },
+  {
+    key:'centroide', label:'Centroide', data: json_Centroide_8, type:'point',
+    color:'var(--c-centroide)',
+    onEach:(f,l)=>l.bindPopup(popupHTML('Referencia','Centroide del sector',[['ID', f.properties.fid ?? '—']]))
+  },
+];
+
+const map = L.map('map', {zoomControl:false, minZoom:1, maxZoom:22});
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom:19, attribution:'&copy; OpenStreetMap contributors'
+}).addTo(map);
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.control.scale({metric:true, imperial:false, position:'bottomleft'}).addTo(map);
+
+const bounds = L.latLngBounds([]);
+const leafletLayers = {};
+
+LAYERS.forEach(cfg=>{
+  let layer;
+  if(cfg.type==='point'){
+    layer = L.geoJson(cfg.data, {
+      pointToLayer:(f,latlng)=>L.circleMarker(latlng,{
+        radius:8, color:'#232323', weight:1, fillOpacity:1, fillColor:'#D5B43C'
+      }),
+      onEachFeature: cfg.onEach
+    });
+  } else {
+    layer = L.geoJson(cfg.data, {
+      style: cfg.style,
+      onEachFeature: cfg.onEach
+    });
+  }
+  layer.addTo(map);
+  leafletLayers[cfg.key] = layer;
+  try{ bounds.extend(layer.getBounds()); }catch(e){}
+});
+
+if(bounds.isValid()) map.fitBounds(bounds, {padding:[24,24]});
+
+/* sidebar layer list */
+const list = document.getElementById('layer-list');
+LAYERS.forEach(cfg=>{
+  const count = cfg.data.features.length;
+  const row = document.createElement('div');
+  row.className='layer-row'; row.dataset.on='1';
+  const swatchClass = cfg.type==='line' ? 'swatch line' : cfg.type==='point' ? 'swatch point' : 'swatch';
+  row.innerHTML = `
+    <span class="${swatchClass}" style="background:${cfg.color}"></span>
+    <span class="layer-label">${cfg.label}</span>
+    <span class="layer-count mono">${count}</span>
+    <span class="chk"><svg viewBox="0 0 24 24" fill="none" stroke="#17201B" stroke-width="3"><path d="M4 12l5 5L20 7"/></svg></span>
+  `;
+  row.addEventListener('click', ()=>{
+    const on = row.dataset.on === '1';
+    if(on){ map.removeLayer(leafletLayers[cfg.key]); row.dataset.on='0'; }
+    else { map.addLayer(leafletLayers[cfg.key]); row.dataset.on='1'; }
+  });
+  list.appendChild(row);
+});
+
+/* stats */
+const totalFeatures = LAYERS.reduce((a,c)=>a+c.data.features.length,0);
+const totalArea = LAYERS.filter(c=>c.type==='fill').reduce((a,c)=>
+  a + c.data.features.reduce((s,f)=>s+(f.properties.area_m2||0),0), 0);
+document.getElementById('stat-grid').innerHTML = `
+  <div class="stat"><b>${totalFeatures}</b><span>Elementos mapeados</span></div>
+  <div class="stat"><b>${(totalArea/10000).toFixed(1)}</b><span>Hectáreas registradas</span></div>
+`;
+
+/* HUD */
+map.on('mousemove', e=>{
+  document.getElementById('hud-lat').textContent = e.latlng.lat.toFixed(5);
+  document.getElementById('hud-lon').textContent = e.latlng.lng.toFixed(5);
+});
+map.on('zoomend', ()=>{
+  document.getElementById('hud-zoom').textContent = map.getZoom();
+});
+map.whenReady(()=>{ document.getElementById('hud-zoom').textContent = map.getZoom(); });
+</script>
+</body>
+</html>
